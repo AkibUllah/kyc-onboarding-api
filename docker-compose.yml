@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kyc
+      POSTGRES_USER: kyc
+      POSTGRES_PASSWORD: kyc
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kyc -d kyc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://kyc:kyc@db:5432/kyc
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_DIR: /data/storage
+      API_KEYS: agent-dev-key:agent:Onboarding App,reviewer-dev-key:reviewer:Nadia Rahman,admin-dev-key:admin:Ops Admin
+      AUTO_APPROVE_LOW_RISK: "true"
+      REVIEW_SLA_HOURS: "24"
+    volumes:
+      - documents:/data/storage
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
+  documents:

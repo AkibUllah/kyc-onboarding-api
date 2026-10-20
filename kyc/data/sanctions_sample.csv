@@ -1,0 +1,8 @@
+list_name,full_name,date_of_birth,nationality,is_pep,reference
+SAMPLE-SANCTIONS,Abdul Karim Chowdhury,1968-03-14,BD,false,SMPL-0001
+SAMPLE-SANCTIONS,Mohammad Faruk Hossain,1975-11-02,BD,false,SMPL-0002
+SAMPLE-PEP,Shahida Begum,1962-07-21,BD,true,SMPL-PEP-0003
+SAMPLE-PEP,Rafiqul Islam Khan,1958-01-09,BD,true,SMPL-PEP-0004
+SAMPLE-SANCTIONS,Tanvir Ahmed Siddique,1983-05-30,BD,false,SMPL-0005
+SAMPLE-SANCTIONS,Jamal Uddin Mollah,1970-12-12,BD,false,SMPL-0006
+SAMPLE-PEP,Nurul Amin Talukder,1955-09-18,BD,true,SMPL-PEP-0007

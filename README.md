@@ -1,3 +1,4 @@
+<!-- topics: fastapi,python,kyc,fintech,compliance,state-machine,risk-scoring,file-upload,sqlalchemy -->
 # KYC Onboarding API
 
 FastAPI service that runs a mobile-wallet style KYC onboarding workflow: applicant intake, NID and selfie document uploads, pluggable verification checks with weighted risk scoring, a reviewer queue with role-based decisions, and SLA statistics built from the audit trail.

@@ -53,6 +53,16 @@ class Settings(BaseSettings):
             raise ValueError("STORAGE_BACKEND must be 'local' or 's3'")
         return value
 
+    @field_validator("database_url")
+    @classmethod
+    def _normalise_database_url(cls, value: str) -> str:
+        """Managed Postgres (Render, Heroku) hands out ``postgres://`` or ``postgresql://`` URLs;
+        SQLAlchemy needs the installed psycopg 3 driver spelled out."""
+        for prefix in ("postgres://", "postgresql://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix) :]
+        return value
+
     @property
     def parsed_api_keys(self) -> dict[str, ApiKey]:
         keys: dict[str, ApiKey] = {}

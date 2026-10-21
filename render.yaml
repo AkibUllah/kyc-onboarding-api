@@ -1,0 +1,38 @@
+# Render blueprint: API + managed PostgreSQL.
+# API_KEYS is entered in the Render dashboard at deploy time (format "key:role:name,...").
+# Uploaded documents go to the container's local disk, which is ephemeral on the free plan.
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: kyc-onboarding-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: STORAGE_BACKEND
+        value: local
+      - key: STORAGE_LOCAL_DIR
+        value: /data/storage
+      - key: AUTO_APPROVE_LOW_RISK
+        value: "true"
+      - key: REVIEW_SLA_HOURS
+        value: "24"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: kyc-db
+          property: connectionString
+      - key: API_KEYS
+        sync: false
+
+databases:
+  - name: kyc-db
+    plan: free
+    databaseName: kyc
+    user: kyc

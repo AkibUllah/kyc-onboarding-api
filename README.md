@@ -8,6 +8,15 @@ FastAPI service that runs a mobile-wallet style KYC onboarding workflow: applica
 ![FastAPI](https://img.shields.io/badge/fastapi-0.110%2B-009688)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
+## Try it live
+
+| | |
+|---|---|
+| API reference | https://akibullah.github.io/kyc-onboarding-api/ — Swagger UI built from the exported OpenAPI document (static; no backend behind it) |
+| Run in your browser | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/AkibUllah/kyc-onboarding-api?quickstart=1) — starts API + PostgreSQL with `docker compose` and runs `scripts/demo_flow.py` (one auto-approved applicant, one sanctions hit in the queue); open forwarded port 8000 at `/docs` with `X-API-Key: agent-dev-key`, `reviewer-dev-key` or `admin-dev-key`. |
+| One-click deploy | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/AkibUllah/kyc-onboarding-api) — `render.yaml` provisions the web service and a free PostgreSQL; you are prompted for `API_KEYS` (`key:role:name,...`). Uploaded documents live on the container disk, which the free plan does not persist. |
+| Local | `docker compose up` (see Quick Start) |
+
 ## Why this exists
 
 Opening a mobile financial services account in Bangladesh means collecting a national ID (front and back), a selfie, and a handful of profile fields, then deciding within a regulator-mandated window whether the person is who they say they are. In practice the hard parts are not the form: they are validating the three NID formats in circulation, refusing spoofed uploads, catching the same ID or photo being reused across applications, screening names against sanctions and PEP lists with Bangla transliteration variance, and proving to an auditor who moved an application into which state and when. This service is that workflow core, written so each verification check is a small, independently testable plug-in and every state change is a row with an actor.

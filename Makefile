@@ -1,4 +1,4 @@
-.PHONY: install run test lint fmt compose-up compose-down
+.PHONY: install run test lint fmt openapi compose-up compose-down
 
 PY ?= .venv/bin/python
 
@@ -20,6 +20,9 @@ lint:
 fmt:
 	$(PY) -m ruff format .
 	$(PY) -m ruff check --fix .
+
+openapi:
+	$(PY) scripts/export_openapi.py
 
 compose-up:
 	docker compose up --build -d

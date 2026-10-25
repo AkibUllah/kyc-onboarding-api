@@ -4,6 +4,8 @@
 FastAPI service that runs a mobile-wallet style KYC onboarding workflow: applicant intake, NID and selfie document uploads, pluggable verification checks with weighted risk scoring, a reviewer queue with role-based decisions, and SLA statistics built from the audit trail.
 
 [![CI](https://github.com/AkibUllah/kyc-onboarding-api/actions/workflows/ci.yml/badge.svg)](https://github.com/AkibUllah/kyc-onboarding-api/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/AkibUllah/kyc-onboarding-api/actions/workflows/codeql.yml/badge.svg)](https://github.com/AkibUllah/kyc-onboarding-api/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/AkibUllah/kyc-onboarding-api)](https://github.com/AkibUllah/kyc-onboarding-api/releases)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11-blue)
 ![FastAPI](https://img.shields.io/badge/fastapi-0.110%2B-009688)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -16,6 +18,16 @@ FastAPI service that runs a mobile-wallet style KYC onboarding workflow: applica
 | Run in your browser | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/AkibUllah/kyc-onboarding-api?quickstart=1) — starts API + PostgreSQL with `docker compose` and runs `scripts/demo_flow.py` (one auto-approved applicant, one sanctions hit in the queue); open forwarded port 8000 at `/docs` with `X-API-Key: agent-dev-key`, `reviewer-dev-key` or `admin-dev-key`. |
 | One-click deploy | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/AkibUllah/kyc-onboarding-api) — `render.yaml` provisions the web service and a free PostgreSQL; you are prompted for `API_KEYS` (`key:role:name,...`). Uploaded documents live on the container disk, which the free plan does not persist. |
 | Local | `docker compose up` (see Quick Start) |
+
+## Screenshots
+
+![Swagger UI API reference](docs/images/api-reference.png)
+
+Live API reference on GitHub Pages: applicants, documents, review queue and stats.
+
+![demo flow against a local instance](docs/images/terminal-demo.png)
+
+A real run of `scripts/demo_flow.py`: a clean applicant is auto-approved, a sanctions hit lands in the review queue at high risk and is rejected, then the daily stats.
 
 ## Why this exists
 
@@ -165,7 +177,7 @@ kyc-onboarding-api/
 │   ├── routers/           # health, applicants, review, stats
 │   └── data/sanctions_sample.csv
 ├── scripts/demo_flow.py
-├── tests/                 # 40 tests: validators, risk, workflow, API flows
+├── tests/                 # 45 tests: validators, risk, workflow, API flows
 ├── Dockerfile · docker-compose.yml · Makefile · .github/workflows/ci.yml
 └── pyproject.toml · requirements*.txt · .env.example
 ```
@@ -173,7 +185,7 @@ kyc-onboarding-api/
 ## Testing
 
 ```bash
-make test        # pytest -q  (40 tests, in-memory SQLite, temp-dir storage)
+make test        # pytest -q  (45 tests, in-memory SQLite, temp-dir storage)
 make lint
 ```
 
@@ -181,11 +193,11 @@ Covered: NID format rules for all three lengths, birth-year prefix extraction, a
 
 ## Roadmap
 
-- Real face-match adapter (vendor SDK) and liveness signal behind `FaceMatcher`
-- NID verification against the Election Commission porichoy-style API as an additional check
-- Alembic migrations instead of `create_all` on startup
-- Webhook or message-queue notification to the wallet core on approval
-- Reviewer workload balancing and auto-assignment from the queue
+- [ ] Real face-match adapter (vendor SDK) and liveness signal behind `FaceMatcher` (#1)
+- [ ] NID verification against the Election Commission porichoy-style API as an additional check (#2)
+- [ ] Alembic migrations instead of `create_all` on startup (#3)
+- [ ] Webhook or message-queue notification to the wallet core on approval (#4)
+- [ ] Reviewer workload balancing and auto-assignment from the queue (#5)
 
 ## License
 

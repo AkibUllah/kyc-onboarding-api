@@ -9,6 +9,7 @@ the bundled sample sanctions list, which lands in the reviewer queue and is reje
 from __future__ import annotations
 
 import sys
+import time
 
 import httpx
 
@@ -35,7 +36,13 @@ def onboard(client: httpx.Client, payload: dict) -> dict:
             headers=AGENT,
         ).raise_for_status()
     client.post(f"/v1/applicants/{aid}/submit", headers=AGENT).raise_for_status()
-    return client.get(f"/v1/applicants/{aid}", headers=AGENT).json()
+    # Checks run as a background task after the 202, so wait for them to finish.
+    deadline = time.monotonic() + 10
+    while True:
+        current = client.get(f"/v1/applicants/{aid}", headers=AGENT).json()
+        if current["status"] != "submitted" or time.monotonic() > deadline:
+            return current
+        time.sleep(0.2)
 
 
 def main() -> None:

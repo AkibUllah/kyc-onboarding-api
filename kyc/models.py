@@ -69,6 +69,9 @@ class Applicant(Base):
         DateTime(timezone=True), nullable=True
     )
     assigned_reviewer: Mapped[str] = mapped_column(String(120), default="")
+    claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     decision_reason: Mapped[str] = mapped_column(Text, default="")
 
     created_by: Mapped[str] = mapped_column(String(120), default="")

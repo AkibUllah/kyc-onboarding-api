@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     face_match_threshold: float = 0.80
     min_applicant_age: int = 18
     review_sla_hours: int = 24
+    claim_ttl_minutes: int = Field(default=240, ge=1)
     sanctions_csv: str = ""
 
     @field_validator("storage_backend")

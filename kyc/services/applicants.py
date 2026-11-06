@@ -100,6 +100,9 @@ def process_submission(db: Session, applicant_id: str, settings: Settings) -> Ap
         return applicant
 
     _, assessment = run_checks(db, applicant, settings)
+    # A re-submission is a new review: the reviewer of the previous round does not keep it.
+    applicant.assigned_reviewer = ""
+    applicant.claimed_at = None
     db.add(
         transition(
             applicant,

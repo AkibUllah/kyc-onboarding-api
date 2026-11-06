@@ -128,6 +128,7 @@ class ApplicantOut(BaseModel):
     risk_level: RiskLevel | None
     risk_score: int | None
     assigned_reviewer: str
+    claimed_at: datetime | None
     decision_reason: str
     missing_documents: list[DocumentKind]
     created_at: datetime
@@ -146,6 +147,7 @@ class ApplicantSummary(BaseModel):
     risk_level: RiskLevel | None
     risk_score: int | None
     assigned_reviewer: str
+    claimed_at: datetime | None
     submitted_at: datetime | None
 
 

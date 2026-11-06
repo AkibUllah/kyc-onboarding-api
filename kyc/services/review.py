@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal
 from ..errors import InvalidTransitionError, PermissionDenied
-from ..models import Applicant, ApplicantStatus
+from ..models import Applicant, ApplicantStatus, utcnow
 from ..workflow import transition
 
 DECISION_TO_STATUS = {
@@ -25,6 +25,7 @@ def claim(db: Session, applicant: Applicant, reviewer: Principal) -> Applicant:
             details={"assigned_reviewer": applicant.assigned_reviewer},
         )
     applicant.assigned_reviewer = reviewer.name
+    applicant.claimed_at = utcnow()
     db.commit()
     db.refresh(applicant)
     return applicant
@@ -49,6 +50,7 @@ def decide(
         transition(applicant, target, actor=reviewer.name, actor_role=reviewer.role, reason=reason)
     )
     applicant.assigned_reviewer = reviewer.name
+    applicant.claimed_at = None
     db.commit()
     db.refresh(applicant)
     return applicant

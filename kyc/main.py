@@ -12,6 +12,7 @@ from . import __version__
 from .config import get_settings
 from .database import Base, engine
 from .errors import KycError
+from .migrations import upgrade_schema
 from .routers import applicants, health, review, stats
 
 logger = logging.getLogger("kyc")
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
         level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
     Base.metadata.create_all(bind=engine)
+    upgrade_schema(engine)
     logger.info(
         "%s %s started storage=%s", settings.app_name, __version__, settings.storage_backend
     )

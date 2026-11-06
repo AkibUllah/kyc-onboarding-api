@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-# Configure before the app modules are imported: in-memory SQLite, local storage in tmp.
-os.environ["DATABASE_URL"] = "sqlite://"
+# Configure before the app modules are imported: in-memory SQLite unless TEST_DATABASE_URL points
+# at a throwaway PostgreSQL (its tables are dropped between tests), local storage in tmp.
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", "sqlite://")
 os.environ["AUTO_APPROVE_LOW_RISK"] = "true"
 os.environ["API_KEYS"] = (
     "agent-key:agent:Branch App,reviewer-key:reviewer:Nadia,admin-key:admin:Ops"
@@ -15,8 +16,9 @@ os.environ["API_KEYS"] = (
 from fastapi.testclient import TestClient  # noqa: E402
 
 from kyc.config import get_settings  # noqa: E402
-from kyc.database import Base, engine  # noqa: E402
+from kyc.database import Base, SessionLocal, engine  # noqa: E402
 from kyc.main import app  # noqa: E402
+from kyc.models import Applicant, ApplicantStatus, RiskLevel  # noqa: E402
 from kyc.storage import LocalStorage, set_storage  # noqa: E402
 
 AGENT = {"X-API-Key": "agent-key"}
@@ -89,6 +91,60 @@ def upload_all(
     assert (
         upload(client, applicant_id, "selfie", selfie, selfie_type, "selfie.img").status_code == 201
     )
+
+
+def submit_for_review(client, create_applicant, **overrides) -> str:
+    """Create an applicant that lands in the reviewer queue at high risk."""
+    fields = {
+        "full_name": "Tanvir Ahmed Siddique",
+        "date_of_birth": "1983-05-30",
+        "nid_number": "1983123456789",
+        **overrides,
+    }
+    applicant = create_applicant(**fields)
+    upload_all(client, applicant["id"])
+    assert client.post(f"/v1/applicants/{applicant['id']}/submit", headers=AGENT).status_code == 202
+    return applicant["id"]
+
+
+def use_two_reviewers(monkeypatch) -> dict[str, str]:
+    monkeypatch.setenv(
+        "API_KEYS",
+        "agent-key:agent:Branch App,reviewer-key:reviewer:Nadia,"
+        "reviewer2-key:reviewer:Farhan,admin-key:admin:Ops",
+    )
+    get_settings.cache_clear()
+    return {"X-API-Key": "reviewer2-key"}
+
+
+def queued(
+    applicant_id: str,
+    *,
+    hours_waiting: float = 1,
+    risk: RiskLevel = RiskLevel.MEDIUM,
+    created_by: str = "Branch App",
+    session_factory=None,
+) -> str:
+    """Put an applicant straight in the queue so a test can control its age and risk."""
+    entered = datetime.now(timezone.utc) - timedelta(hours=hours_waiting)
+    with (session_factory or SessionLocal)() as db:
+        db.add(
+            Applicant(
+                id=applicant_id,
+                full_name="Queue Fixture",
+                nid_number="1990123456789",
+                date_of_birth=date(1990, 1, 1),
+                phone="01711223344",
+                status=ApplicantStatus.UNDER_REVIEW,
+                status_entered_at=entered,
+                submitted_at=entered,
+                risk_level=risk,
+                risk_score=50,
+                created_by=created_by,
+            )
+        )
+        db.commit()
+    return applicant_id
 
 
 @pytest.fixture

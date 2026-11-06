@@ -42,6 +42,12 @@ class DocumentKind(str, enum.Enum):
 REQUIRED_DOCUMENTS = (DocumentKind.NID_FRONT, DocumentKind.NID_BACK, DocumentKind.SELFIE)
 
 
+class AssignmentAction(str, enum.Enum):
+    CLAIMED = "claimed"
+    AUTO_ASSIGNED = "auto_assigned"
+    EXPIRED = "expired"
+
+
 class Applicant(Base):
     __tablename__ = "applicants"
 
@@ -69,6 +75,9 @@ class Applicant(Base):
         DateTime(timezone=True), nullable=True
     )
     assigned_reviewer: Mapped[str] = mapped_column(String(120), default="")
+    claimed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     decision_reason: Mapped[str] = mapped_column(Text, default="")
 
     created_by: Mapped[str] = mapped_column(String(120), default="")
@@ -89,6 +98,11 @@ class Applicant(Base):
     )
     check_results: Mapped[list[CheckResult]] = relationship(
         back_populates="applicant", cascade="all, delete-orphan", order_by="CheckResult.created_at"
+    )
+    assignment_events: Mapped[list[AssignmentEvent]] = relationship(
+        back_populates="applicant",
+        cascade="all, delete-orphan",
+        order_by="AssignmentEvent.id",
     )
 
     def document_of(self, kind: DocumentKind) -> Document | None:
@@ -141,6 +155,39 @@ class StateTransition(Base):
     )
 
     applicant: Mapped[Applicant] = relationship(back_populates="transitions")
+
+
+class AssignmentEvent(Base):
+    """Audit trail for who held an applicant. Kept apart from ``StateTransition`` because the
+    status does not change here, and SLA statistics are computed from the transitions."""
+
+    __tablename__ = "assignment_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    applicant_id: Mapped[str] = mapped_column(
+        ForeignKey("applicants.id", ondelete="CASCADE"), index=True
+    )
+    action: Mapped[AssignmentAction] = mapped_column(
+        Enum(AssignmentAction, native_enum=False, length=20)
+    )
+    reviewer: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    applicant: Mapped[Applicant] = relationship(back_populates="assignment_events")
+
+
+class ReviewerProfile(Base):
+    """Working state of a reviewer. Identity stays with the API key, matched on its name;
+    a row is created the first time a reviewer takes work or has settings changed."""
+
+    __tablename__ = "reviewers"
+
+    name: Mapped[str] = mapped_column(String(120), primary_key=True)
+    available: Mapped[bool] = mapped_column(Boolean, default=True)
+    max_open_cases: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
 
 
 class CheckResult(Base):

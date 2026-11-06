@@ -100,6 +100,9 @@ def process_submission(db: Session, applicant_id: str, settings: Settings) -> Ap
         return applicant
 
     _, assessment = run_checks(db, applicant, settings)
+    # A re-submission is a new review: the reviewer of the previous round does not keep it.
+    applicant.assigned_reviewer = ""
+    applicant.claimed_at = None
     db.add(
         transition(
             applicant,
@@ -147,6 +150,7 @@ def list_applicants(
     status: ApplicantStatus | None = None,
     risk_level: RiskLevel | None = None,
     reviewer: str | None = None,
+    unassigned: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[Applicant], int]:
@@ -157,6 +161,8 @@ def list_applicants(
         query = query.where(Applicant.risk_level == risk_level)
     if reviewer:
         query = query.where(Applicant.assigned_reviewer == reviewer)
+    if unassigned:
+        query = query.where(Applicant.assigned_reviewer == "")
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
     rows = (
         db.execute(

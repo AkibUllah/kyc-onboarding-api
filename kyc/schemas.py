@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .models import ApplicantStatus, DocumentKind, RiskLevel
+from .models import ApplicantStatus, AssignmentAction, DocumentKind, RiskLevel
 
 BD_PHONE = re.compile(r"^(\+8801|01)[3-9]\d{8}$")
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -102,6 +102,13 @@ class TransitionOut(BaseModel):
     created_at: datetime
 
 
+class AssignmentEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    action: AssignmentAction
+    reviewer: str
+    created_at: datetime
+
+
 class CheckResultOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     run_id: str
@@ -128,6 +135,7 @@ class ApplicantOut(BaseModel):
     risk_level: RiskLevel | None
     risk_score: int | None
     assigned_reviewer: str
+    claimed_at: datetime | None
     decision_reason: str
     missing_documents: list[DocumentKind]
     created_at: datetime
@@ -146,6 +154,7 @@ class ApplicantSummary(BaseModel):
     risk_level: RiskLevel | None
     risk_score: int | None
     assigned_reviewer: str
+    claimed_at: datetime | None
     submitted_at: datetime | None
 
 
@@ -159,6 +168,24 @@ class Page(BaseModel):
 class DecisionIn(BaseModel):
     decision: str = Field(pattern="^(approve|reject|needs_more_info)$")
     reason: str = Field(default="", max_length=1000)
+
+
+class AvailabilityIn(BaseModel):
+    available: bool
+
+
+class ReviewerUpdate(BaseModel):
+    available: bool | None = None
+    max_open_cases: int | None = Field(
+        default=None, ge=1, description="Per-reviewer cap; null falls back to MAX_OPEN_CASES."
+    )
+
+
+class ReviewerOut(BaseModel):
+    name: str
+    available: bool
+    max_open_cases: int
+    open_cases: int
 
 
 class ChecksRunOut(BaseModel):

@@ -41,7 +41,8 @@ Opening a mobile financial services account in Bangladesh means collecting a nat
 - Pluggable checks registered with a decorator: NID format (10 / 13 / 17 digits, birth-year prefix), date-of-birth consistency (adult, NID year agreement), face match (protocol + deterministic stub that fails identical files), sanctions / PEP screening against a CSV with normalised fuzzy name matching and DOB confirmation, duplicate identity (reused document hashes, NID already approved elsewhere)
 - Weighted risk scoring to `low` / `medium` / `high` with configurable thresholds and profile factors; low-risk applicants auto-approved by `system` when enabled
 - Checks run in FastAPI `BackgroundTasks` after submission; admins can re-run them synchronously
-- Reviewer endpoints: queue filtered by risk, claim (one reviewer per applicant, admin override), decisions that require a reason for reject / needs-more-info
+- Reviewer endpoints: queue filtered by risk or unassigned cases, claim (one reviewer per applicant, admin override), decisions that require a reason for reject / needs-more-info
+- Auto-assignment with `POST /v1/review/next`: overdue cases first, then risk and wait time, per-reviewer open-case caps, reviewer availability, expiring claims, and no reviewer ever handles an application they submitted (see [Review workflow](#review-workflow))
 - Three API-key roles (`agent`, `reviewer`, `admin`) through a single `require_role` dependency
 - Daily stats (created, submitted, approved, auto-approved, rejected, by risk level, average decision hours, open backlog) and SLA stats (average and max hours per state, applicants currently breaching the review SLA)
 - Uniform error envelope, request-id middleware, `/health` probe with DB check, OpenAPI docs at `/docs`
@@ -51,7 +52,7 @@ Opening a mobile financial services account in Bangladesh means collecting a nat
 ```mermaid
 flowchart LR
     Agent[Onboarding app\nagent key] -->|create / upload / submit| API[FastAPI]
-    Reviewer[Compliance officer\nreviewer key] -->|queue / claim / decide| API
+    Reviewer[Compliance officer\nreviewer key] -->|next / queue / claim / decide| API
     API --> WF[workflow.py\nstate machine + audit rows]
     API --> Docs[services/documents\nsniff, hash, store]
     Docs --> Storage[(Local disk or S3)]
@@ -65,6 +66,8 @@ flowchart LR
     Risk -->|low + auto-approve| WF
     WF --> DB[(PostgreSQL / SQLite)]
     API --> Stats[services/stats\ndaily + SLA]
+    API --> Review[services/review\ndispatch + claim expiry]
+    Review --> DB
 ```
 
 Key decisions:
@@ -72,6 +75,7 @@ Key decisions:
 - **Transitions are data.** `workflow.transition` is the only way an applicant changes state. It validates against `TRANSITIONS`, writes a `StateTransition` with `seconds_in_previous_state`, and stamps `submitted_at` / `decided_at`. SLA reporting is a `GROUP BY from_status` over that table, nothing is computed from logs.
 - **Checks are plug-ins, failures are points.** A check is `(CheckContext) -> CheckOutcome`; the runner never knows which checks exist. A crashing check is recorded as a failed outcome with a modest penalty instead of blocking the pipeline. Scores are additive and capped, so adding a check does not require re-tuning thresholds.
 - **Submission is accepted, processing is asynchronous.** `POST /submit` returns 202 and schedules `process_submission` with its own DB session. The same function is callable synchronously by admins, which is also how the tests exercise it deterministically.
+- **Assignment is one statement.** `POST /v1/review/next` picks and assigns in a single `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)`, so a case cannot reach two reviewers and concurrent reviewers do not wait on each other. Taking the reviewer's own row first serialises their requests, which is what makes the open-case cap hold.
 - **Uploads are untrusted.** Type comes from the bytes, not the header; a PNG declared as JPEG is rejected because that mismatch is a fingerprint of tampering tools. Filenames are reduced to their last path component before storage.
 - **Stubs keep the real seams.** `StubFaceMatcher` and the sample sanctions CSV are clearly labelled sample implementations, but the `FaceMatcher` protocol and `SANCTIONS_CSV` setting are the actual integration points for a biometric vendor and a consolidated list.
 
@@ -84,7 +88,7 @@ Key decisions:
 | Persistence | SQLAlchemy 2.0 (typed `Mapped` models); PostgreSQL 16 in compose, SQLite for dev and tests |
 | Storage | Local filesystem (default) or S3-compatible via boto3 (`[s3]` extra) |
 | Server | uvicorn, non-root Docker image |
-| Tooling | pytest + httpx TestClient, ruff, GitHub Actions (3.10 / 3.11) |
+| Tooling | pytest + httpx TestClient, ruff, GitHub Actions (3.10 / 3.11, PostgreSQL 16) |
 
 ## Quick Start
 
@@ -128,6 +132,38 @@ curl -s -X POST $BASE/v1/review/$ID/decision -H "$REVIEWER" -H 'Content-Type: ap
   -d '{"decision": "approve", "reason": "Documents verified"}'
 ```
 
+## Review workflow
+
+Reviewers normally call `POST /v1/review/next` and work what it returns. Picking a specific case from `GET /v1/review/queue` with `POST /v1/review/{id}/claim` still works and follows the same rules.
+
+**Dispatch order.** Cases past `REVIEW_SLA_HOURS` come first, most overdue first, whatever their risk, so a steady stream of high-risk cases cannot starve older ones. Cases inside the SLA go by risk (high, medium, low), then longest wait. The clock is the one `/v1/stats/sla` reports on: time since the applicant entered `under_review`.
+
+**Who can receive a case.**
+
+| Rule | Applies to | Result |
+| --- | --- | --- |
+| One holder per case | `next`, `claim` | `next` moves on to the following case; `claim` answers 409 |
+| Below the open-case cap | `next`, `claim` | 409 `reviewer_at_capacity`, with `open_cases` and `max_open_cases` |
+| Reviewer is available | `next`, `claim`, deciding a case they do not hold | 409 `reviewer_unavailable` |
+| Not the applicant's creator or any submitter, in any round | `next`, `claim`, decisions | `next` passes over it; the others answer 403. Admins are included |
+
+The cap is `MAX_OPEN_CASES` unless an admin sets a per-reviewer value. Reviewers pause themselves with `PATCH /v1/review/reviewers/me`. Pausing stops new work only: cases already held can be finished, but they cannot be renewed, so anything left expires back to the queue.
+
+**Claim expiry.** A claim lasts `CLAIM_TTL_MINUTES`. Claiming a case you already hold renews it. Expired claims are released at the start of every review operation, with no background worker, and keep their place in line because the SLA clock is not reset. The former holder can no longer decide the case once someone else has it. `GET /v1/applicants/{id}/assignments` shows who held a case and when claims lapsed.
+
+**Re-submission.** An applicant coming back from `needs_more_info` returns to the queue unassigned.
+
+`POST /v1/review/next` answers 204 when nothing is eligible for the caller.
+
+```bash
+curl -s -X POST $BASE/v1/review/next -H "$REVIEWER"                        # next case, or 204
+curl -s -X PATCH $BASE/v1/review/reviewers/me -H "$REVIEWER" \
+  -H 'Content-Type: application/json' -d '{"available": false}'            # pause
+curl -s $BASE/v1/review/reviewers -H "$REVIEWER"                           # load per reviewer
+```
+
+Guarantees against double assignment and the cap rely on PostgreSQL row locks, or on SQLite's single writer for local use. On SQLite a decision racing an assignment is not protected, which only matters if you run concurrent reviewers on it.
+
 ## API
 
 All business routes are under `/v1`. Roles: `agent` (A), `reviewer` (R), `admin` (always allowed).
@@ -145,9 +181,14 @@ All business routes are under `/v1`. Roles: `agent` (A), `reviewer` (R), `admin`
 | POST | `/v1/applicants/{id}/checks/run` | admin | Run or re-run checks synchronously |
 | GET | `/v1/applicants/{id}/checks` | R | Check outcomes for every run |
 | GET | `/v1/applicants/{id}/history` | A R | Audit trail of state transitions |
-| GET | `/v1/review/queue?risk_level=&mine=` | R | Applicants under review, oldest submission first |
-| POST | `/v1/review/{id}/claim` | R | Assign to the calling reviewer |
+| GET | `/v1/applicants/{id}/assignments` | R | Who held the applicant: claims, auto-assignments, expiries |
+| GET | `/v1/review/queue?risk_level=&mine=&unassigned=` | R | Applicants under review, oldest submission first |
+| POST | `/v1/review/next` | R | Assign the next eligible case to the caller; 204 if there is none |
+| POST | `/v1/review/{id}/claim` | R | Assign a specific case to the caller, or renew their claim |
 | POST | `/v1/review/{id}/decision` | R | `{decision: approve\|reject\|needs_more_info, reason}` |
+| GET | `/v1/review/reviewers` | R | Availability, cap and open cases per reviewer |
+| PATCH | `/v1/review/reviewers/me` | R | Set your own availability |
+| PATCH | `/v1/review/reviewers/{name}` | admin | Set a reviewer's availability and cap (`null` clears the cap) |
 | GET | `/v1/stats/daily?day=` | R | Daily throughput and decision timing |
 | GET | `/v1/stats/sla` | R | Time-in-state per status and current SLA breaches |
 | GET | `/health` | - | Liveness with DB check |
@@ -167,17 +208,18 @@ kyc-onboarding-api/
 │   ├── main.py            # app factory, request-id middleware, error handler
 │   ├── config.py          # pydantic-settings, API key parsing
 │   ├── database.py        # SQLAlchemy engine/session (SQLite or Postgres)
-│   ├── models.py          # Applicant, Document, StateTransition, CheckResult
+│   ├── migrations.py      # idempotent startup upgrades for existing databases
+│   ├── models.py          # Applicant, Document, StateTransition, AssignmentEvent, ReviewerProfile, CheckResult
 │   ├── schemas.py         # request/response models
 │   ├── auth.py            # X-API-Key principals and require_role
 │   ├── workflow.py        # transition table + audited transition()
 │   ├── storage.py         # Storage protocol, LocalStorage, S3Storage
 │   ├── checks/            # base registry, nid, dob, face, sanctions, duplicates, risk, runner
-│   ├── services/          # applicants, documents, review, stats
+│   ├── services/          # applicants, documents, review, reviewers, stats
 │   ├── routers/           # health, applicants, review, stats
 │   └── data/sanctions_sample.csv
 ├── scripts/demo_flow.py
-├── tests/                 # 45 tests: validators, risk, workflow, API flows
+├── tests/                 # 94 tests: validators, risk, workflow, API flows, review assignment races
 ├── Dockerfile · docker-compose.yml · Makefile · .github/workflows/ci.yml
 └── pyproject.toml · requirements*.txt · .env.example
 ```
@@ -185,11 +227,14 @@ kyc-onboarding-api/
 ## Testing
 
 ```bash
-make test        # pytest -q  (45 tests, in-memory SQLite, temp-dir storage)
+make test        # pytest -q  (94 tests, in-memory SQLite, temp-dir storage)
 make lint
+
+# Same suite on a throwaway PostgreSQL (its tables are dropped between tests); CI does this too
+TEST_DATABASE_URL=postgresql+psycopg://kyc:kyc@localhost:5432/kyc_test make test
 ```
 
-Covered: NID format rules for all three lengths, birth-year prefix extraction, age boundaries, magic-byte sniffing and every upload rejection rule, name normalisation and sanctions screening with DOB confirmation, score thresholds and factor summation, the full transition table including the `needs_more_info` loop, and end-to-end API flows: role enforcement, uploads and downloads, submission gating, background checks with auto-approval, sanctions and PEP outcomes, under-age and NID-year mismatches, identical selfie detection, reused documents and duplicate NIDs, claim conflicts and admin override, re-submission producing a second check run, and daily / SLA statistics.
+Covered: NID format rules for all three lengths, birth-year prefix extraction, age boundaries, magic-byte sniffing and every upload rejection rule, name normalisation and sanctions screening with DOB confirmation, score thresholds and factor summation, the full transition table including the `needs_more_info` loop, and end-to-end API flows: role enforcement, uploads and downloads, submission gating, background checks with auto-approval, sanctions and PEP outcomes, under-age and NID-year mismatches, identical selfie detection, reused documents and duplicate NIDs, claim conflicts and admin override, re-submission producing a second check run, and daily / SLA statistics. Review assignment is covered for dispatch order, SLA breaches, caps, availability, submitter exclusion, claim expiry and renewal, the schema upgrade, and threaded races on real connections (file-backed SQLite, or PostgreSQL with `SKIP LOCKED` when `TEST_DATABASE_URL` is set).
 
 ## Roadmap
 
@@ -197,7 +242,6 @@ Covered: NID format rules for all three lengths, birth-year prefix extraction, a
 - [ ] NID verification against the Election Commission porichoy-style API as an additional check (#2)
 - [ ] Alembic migrations instead of `create_all` on startup (#3)
 - [ ] Webhook or message-queue notification to the wallet core on approval (#4)
-- [ ] Reviewer workload balancing and auto-assignment from the queue (#5)
 
 ## License
 

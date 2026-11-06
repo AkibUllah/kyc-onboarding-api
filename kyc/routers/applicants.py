@@ -12,6 +12,7 @@ from ..schemas import (
     ApplicantCreate,
     ApplicantOut,
     ApplicantUpdate,
+    AssignmentEventOut,
     CheckResultOut,
     ChecksRunOut,
     DocumentOut,
@@ -183,3 +184,12 @@ def history(
     _: Principal = Depends(require_role("agent", "reviewer", "admin")),
 ):
     return svc.get_applicant(db, applicant_id).transitions
+
+
+@router.get("/{applicant_id}/assignments", response_model=list[AssignmentEventOut])
+def assignments(
+    applicant_id: str,
+    db: Session = Depends(get_db),
+    _: Principal = Depends(require_role("reviewer", "admin")),
+):
+    return svc.get_applicant(db, applicant_id).assignment_events

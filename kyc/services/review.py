@@ -3,13 +3,20 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, exists, or_, select, update
 from sqlalchemy.orm import Session
 
 from ..auth import Principal
 from ..config import Settings
 from ..errors import InvalidTransitionError, PermissionDenied, ReviewerUnavailable
-from ..models import Applicant, ApplicantStatus, AssignmentAction, AssignmentEvent, utcnow
+from ..models import (
+    Applicant,
+    ApplicantStatus,
+    AssignmentAction,
+    AssignmentEvent,
+    StateTransition,
+    utcnow,
+)
 from ..workflow import transition
 from . import reviewers
 
@@ -20,6 +27,26 @@ DECISION_TO_STATUS = {
     "reject": ApplicantStatus.REJECTED,
     "needs_more_info": ApplicantStatus.NEEDS_MORE_INFO,
 }
+
+
+def _submitted_by(name: str) -> ColumnElement[bool]:
+    """Whether ``name`` created the applicant or ever submitted it, across re-submissions."""
+    return or_(
+        Applicant.created_by == name,
+        exists().where(
+            StateTransition.applicant_id == Applicant.id,
+            StateTransition.to_status == ApplicantStatus.SUBMITTED.value,
+            StateTransition.actor == name,
+        ),
+    )
+
+
+def _require_independent_reviewer(db: Session, applicant: Applicant, reviewer: Principal) -> None:
+    submitted = db.execute(
+        select(Applicant.id).where(Applicant.id == applicant.id, _submitted_by(reviewer.name))
+    ).first()
+    if submitted is not None:
+        raise PermissionDenied("Reviewers may not handle an application they submitted.")
 
 
 def release_expired_claims(db: Session, settings: Settings, now: datetime | None = None) -> int:
@@ -76,6 +103,7 @@ def claim(db: Session, applicant: Applicant, reviewer: Principal, settings: Sett
         raise InvalidTransitionError(
             f"Only applicants under review can be claimed (status '{applicant.status.value}')."
         )
+    _require_independent_reviewer(db, applicant, reviewer)
     if applicant.assigned_reviewer and applicant.assigned_reviewer != reviewer.name:
         raise InvalidTransitionError(
             f"Already assigned to {applicant.assigned_reviewer}.",
@@ -112,6 +140,7 @@ def decide(
         raise InvalidTransitionError("A reason is required when rejecting or requesting more info.")
     release_expired_claims(db, settings)
     db.refresh(applicant, with_for_update=True)
+    _require_independent_reviewer(db, applicant, reviewer)
     holder = applicant.assigned_reviewer
     if holder and holder not in {reviewer.name, "system"} and reviewer.role != "admin":
         raise PermissionDenied(

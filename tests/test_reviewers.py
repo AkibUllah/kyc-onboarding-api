@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 from kyc.config import get_settings
-from tests.conftest import ADMIN, AGENT, REVIEWER, submit_for_review, use_two_reviewers
+from tests.conftest import (
+    ADMIN,
+    AGENT,
+    REVIEWER,
+    applicant_payload,
+    submit_for_review,
+    upload_all,
+    use_two_reviewers,
+)
 
 
 def roster(client) -> dict[str, dict]:
@@ -118,3 +126,52 @@ def test_cap_is_per_reviewer(client, create_applicant, monkeypatch):
     client.post(f"/v1/review/{first}/claim", headers=REVIEWER)
     assert client.post(f"/v1/review/{second}/claim", headers=REVIEWER).status_code == 409
     assert client.post(f"/v1/review/{second}/claim", headers=second_reviewer).status_code == 200
+
+
+def test_submitter_cannot_claim_or_decide_their_own_application(client, create_applicant):
+    applicant = create_applicant(
+        full_name="Tanvir Ahmed Siddique", date_of_birth="1983-05-30", nid_number="1983123456789"
+    )
+    upload_all(client, applicant["id"])
+    client.post(f"/v1/applicants/{applicant['id']}/submit", headers=ADMIN)  # Ops submits
+
+    claimed = client.post(f"/v1/review/{applicant['id']}/claim", headers=ADMIN)
+    assert claimed.status_code == 403 and claimed.json()["code"] == "forbidden"
+    decided = client.post(
+        f"/v1/review/{applicant['id']}/decision", json={"decision": "approve"}, headers=ADMIN
+    )
+    assert decided.status_code == 403
+    body = client.get(f"/v1/applicants/{applicant['id']}", headers=ADMIN).json()
+    assert body["status"] == "under_review" and body["assigned_reviewer"] == ""
+
+
+def test_creator_counts_as_submitter(client):
+    response = client.post(
+        "/v1/applicants",
+        json=applicant_payload(
+            full_name="Tanvir Ahmed Siddique",
+            date_of_birth="1983-05-30",
+            nid_number="1983123456789",
+        ),
+        headers=ADMIN,
+    )
+    applicant_id = response.json()["id"]
+    upload_all(client, applicant_id)
+    client.post(f"/v1/applicants/{applicant_id}/submit", headers=AGENT)
+    assert client.post(f"/v1/review/{applicant_id}/claim", headers=ADMIN).status_code == 403
+
+
+def test_earlier_submitter_stays_excluded_after_someone_else_resubmits(client, create_applicant):
+    applicant = create_applicant(
+        full_name="Tanvir Ahmed Siddique", date_of_birth="1983-05-30", nid_number="1983123456789"
+    )
+    upload_all(client, applicant["id"])
+    client.post(f"/v1/applicants/{applicant['id']}/submit", headers=ADMIN)
+    client.post(
+        f"/v1/review/{applicant['id']}/decision",
+        json={"decision": "needs_more_info", "reason": "Blurred selfie"},
+        headers=REVIEWER,
+    )
+    client.post(f"/v1/applicants/{applicant['id']}/submit", headers=AGENT)
+    assert client.post(f"/v1/review/{applicant['id']}/claim", headers=ADMIN).status_code == 403
+    assert client.post(f"/v1/review/{applicant['id']}/claim", headers=REVIEWER).status_code == 200

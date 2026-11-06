@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .models import ApplicantStatus, DocumentKind, RiskLevel
+from .models import ApplicantStatus, AssignmentAction, DocumentKind, RiskLevel
 
 BD_PHONE = re.compile(r"^(\+8801|01)[3-9]\d{8}$")
 EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -99,6 +99,13 @@ class TransitionOut(BaseModel):
     actor_role: str
     reason: str
     seconds_in_previous_state: float | None
+    created_at: datetime
+
+
+class AssignmentEventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    action: AssignmentAction
+    reviewer: str
     created_at: datetime
 
 

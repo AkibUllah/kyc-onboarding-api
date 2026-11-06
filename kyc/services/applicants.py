@@ -150,6 +150,7 @@ def list_applicants(
     status: ApplicantStatus | None = None,
     risk_level: RiskLevel | None = None,
     reviewer: str | None = None,
+    unassigned: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[Applicant], int]:
@@ -160,6 +161,8 @@ def list_applicants(
         query = query.where(Applicant.risk_level == risk_level)
     if reviewer:
         query = query.where(Applicant.assigned_reviewer == reviewer)
+    if unassigned:
+        query = query.where(Applicant.assigned_reviewer == "")
     total = db.execute(select(func.count()).select_from(query.subquery())).scalar_one()
     rows = (
         db.execute(

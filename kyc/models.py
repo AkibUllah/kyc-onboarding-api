@@ -175,6 +175,20 @@ class AssignmentEvent(Base):
     applicant: Mapped[Applicant] = relationship(back_populates="assignment_events")
 
 
+class ReviewerProfile(Base):
+    """Working state of a reviewer. Identity stays with the API key, matched on its name;
+    a row is created the first time a reviewer takes work or has settings changed."""
+
+    __tablename__ = "reviewers"
+
+    name: Mapped[str] = mapped_column(String(120), primary_key=True)
+    available: Mapped[bool] = mapped_column(Boolean, default=True)
+    max_open_cases: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
 class CheckResult(Base):
     __tablename__ = "check_results"
 

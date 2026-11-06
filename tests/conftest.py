@@ -92,6 +92,30 @@ def upload_all(
     )
 
 
+def submit_for_review(client, create_applicant, **overrides) -> str:
+    """Create an applicant that lands in the reviewer queue at high risk."""
+    fields = {
+        "full_name": "Tanvir Ahmed Siddique",
+        "date_of_birth": "1983-05-30",
+        "nid_number": "1983123456789",
+        **overrides,
+    }
+    applicant = create_applicant(**fields)
+    upload_all(client, applicant["id"])
+    assert client.post(f"/v1/applicants/{applicant['id']}/submit", headers=AGENT).status_code == 202
+    return applicant["id"]
+
+
+def use_two_reviewers(monkeypatch) -> dict[str, str]:
+    monkeypatch.setenv(
+        "API_KEYS",
+        "agent-key:agent:Branch App,reviewer-key:reviewer:Nadia,"
+        "reviewer2-key:reviewer:Farhan,admin-key:admin:Ops",
+    )
+    get_settings.cache_clear()
+    return {"X-API-Key": "reviewer2-key"}
+
+
 @pytest.fixture
 def create_applicant(client):
     def _create(**overrides):

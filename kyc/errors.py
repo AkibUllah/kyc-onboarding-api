@@ -36,3 +36,13 @@ class UploadRejected(KycError):
 class PermissionDenied(KycError):
     status_code = 403
     code = "forbidden"
+
+
+class ReviewerUnavailable(KycError):
+    status_code = 409
+    code = "reviewer_unavailable"
+
+
+class ReviewerAtCapacity(KycError):
+    status_code = 409
+    code = "reviewer_at_capacity"

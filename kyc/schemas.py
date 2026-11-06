@@ -170,6 +170,24 @@ class DecisionIn(BaseModel):
     reason: str = Field(default="", max_length=1000)
 
 
+class AvailabilityIn(BaseModel):
+    available: bool
+
+
+class ReviewerUpdate(BaseModel):
+    available: bool | None = None
+    max_open_cases: int | None = Field(
+        default=None, ge=1, description="Per-reviewer cap; null falls back to MAX_OPEN_CASES."
+    )
+
+
+class ReviewerOut(BaseModel):
+    name: str
+    available: bool
+    max_open_cases: int
+    open_cases: int
+
+
 class ChecksRunOut(BaseModel):
     applicant_id: str
     status: ApplicantStatus

@@ -9,21 +9,7 @@ from kyc.database import Base, SessionLocal
 from kyc.migrations import upgrade_schema
 from kyc.models import Applicant
 from kyc.services.review import release_expired_claims
-from tests.conftest import AGENT, REVIEWER, upload_all
-
-
-def submit_for_review(client, create_applicant, **overrides) -> str:
-    """Create an applicant that lands in the reviewer queue at high risk."""
-    fields = {
-        "full_name": "Tanvir Ahmed Siddique",
-        "date_of_birth": "1983-05-30",
-        "nid_number": "1983123456789",
-        **overrides,
-    }
-    applicant = create_applicant(**fields)
-    upload_all(client, applicant["id"])
-    assert client.post(f"/v1/applicants/{applicant['id']}/submit", headers=AGENT).status_code == 202
-    return applicant["id"]
+from tests.conftest import AGENT, REVIEWER, submit_for_review, use_two_reviewers
 
 
 def test_claim_is_timestamped_and_cleared_by_the_decision(client, create_applicant):
@@ -103,16 +89,6 @@ def expire_claim(applicant_id: str) -> None:
         row = db.get(Applicant, applicant_id)
         row.claimed_at = datetime.now(timezone.utc) - timedelta(minutes=241)
         db.commit()
-
-
-def use_two_reviewers(monkeypatch) -> dict[str, str]:
-    monkeypatch.setenv(
-        "API_KEYS",
-        "agent-key:agent:Branch App,reviewer-key:reviewer:Nadia,"
-        "reviewer2-key:reviewer:Farhan,admin-key:admin:Ops",
-    )
-    get_settings.cache_clear()
-    return {"X-API-Key": "reviewer2-key"}
 
 
 def test_expired_claim_returns_to_the_queue_and_is_audited(client, create_applicant):

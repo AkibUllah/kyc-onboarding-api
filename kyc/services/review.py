@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 
 from ..auth import Principal
 from ..config import Settings
-from ..errors import InvalidTransitionError, PermissionDenied
+from ..errors import InvalidTransitionError, PermissionDenied, ReviewerUnavailable
 from ..models import Applicant, ApplicantStatus, AssignmentAction, AssignmentEvent, utcnow
 from ..workflow import transition
+from . import reviewers
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,7 @@ def release_expired_claims(db: Session, settings: Settings, now: datetime | None
 
 def claim(db: Session, applicant: Applicant, reviewer: Principal, settings: Settings) -> Applicant:
     release_expired_claims(db, settings)
+    limit = reviewers.reserve(db, reviewer.name, settings)
     db.refresh(applicant, with_for_update=True)
     if applicant.status != ApplicantStatus.UNDER_REVIEW:
         raise InvalidTransitionError(
@@ -80,6 +82,7 @@ def claim(db: Session, applicant: Applicant, reviewer: Principal, settings: Sett
             details={"assigned_reviewer": applicant.assigned_reviewer},
         )
     if not applicant.assigned_reviewer:
+        reviewers.require_capacity(db, reviewer.name, limit)
         db.add(
             AssignmentEvent(
                 applicant_id=applicant.id,
@@ -109,15 +112,13 @@ def decide(
         raise InvalidTransitionError("A reason is required when rejecting or requesting more info.")
     release_expired_claims(db, settings)
     db.refresh(applicant, with_for_update=True)
-    if (
-        applicant.assigned_reviewer
-        and applicant.assigned_reviewer not in {reviewer.name, "system"}
-        and reviewer.role != "admin"
-    ):
+    holder = applicant.assigned_reviewer
+    if holder and holder not in {reviewer.name, "system"} and reviewer.role != "admin":
         raise PermissionDenied(
-            f"Applicant is assigned to {applicant.assigned_reviewer}.",
-            details={"assigned_reviewer": applicant.assigned_reviewer},
+            f"Applicant is assigned to {holder}.", details={"assigned_reviewer": holder}
         )
+    if holder != reviewer.name and not reviewers.is_available(db, reviewer.name):
+        raise ReviewerUnavailable(f"{reviewer.name} is not taking new cases.")
     db.add(
         transition(applicant, target, actor=reviewer.name, actor_role=reviewer.role, reason=reason)
     )

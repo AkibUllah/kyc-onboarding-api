@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     min_applicant_age: int = 18
     review_sla_hours: int = 24
     claim_ttl_minutes: int = Field(default=240, ge=1)
+    max_open_cases: int = Field(default=10, ge=1)
     sanctions_csv: str = ""
 
     @field_validator("storage_backend")

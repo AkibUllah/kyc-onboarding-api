@@ -3,7 +3,8 @@
     python scripts/demo_flow.py http://127.0.0.1:8000
 
 Creates two applicants: a clean one that is auto-approved and one whose name is on
-the bundled sample sanctions list, which lands in the reviewer queue and is rejected.
+the bundled sample sanctions list, which lands in the reviewer queue, is assigned to the
+reviewer with POST /v1/review/next and rejected.
 """
 
 from __future__ import annotations
@@ -84,10 +85,11 @@ def main() -> None:
 
         queue = client.get("/v1/review/queue", headers=REVIEWER).json()
         print(f"review queue: {queue['total']} applicant(s)")
-        client.post(f"/v1/review/{risky['id']}/claim", headers=REVIEWER).raise_for_status()
+        assigned = client.post("/v1/review/next", headers=REVIEWER).raise_for_status().json()
+        print(f"assigned to {assigned['assigned_reviewer']}: {assigned['full_name']}")
         decided = (
             client.post(
-                f"/v1/review/{risky['id']}/decision",
+                f"/v1/review/{assigned['id']}/decision",
                 json={"decision": "reject", "reason": "Confirmed sanctions list match"},
                 headers=REVIEWER,
             )

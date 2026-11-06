@@ -12,7 +12,7 @@ spent in the previous state, which is what the SLA statistics are built from.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .errors import InvalidTransitionError
 from .models import Applicant, ApplicantStatus, StateTransition, utcnow
@@ -34,6 +34,11 @@ EDITABLE_STATES = frozenset({ApplicantStatus.DRAFT, ApplicantStatus.NEEDS_MORE_I
 
 def can_transition(current: ApplicantStatus, target: ApplicantStatus) -> bool:
     return target in TRANSITIONS.get(current, frozenset())
+
+
+def sla_deadline(review_sla_hours: int, now: datetime) -> datetime:
+    """Applicants that entered review at or before this instant have breached the SLA."""
+    return now - timedelta(hours=review_sla_hours)
 
 
 def _aware(dt: datetime) -> datetime:

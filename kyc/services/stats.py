@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from ..config import Settings
 from ..models import Applicant, ApplicantStatus, StateTransition
 from ..schemas import DailyStats, SlaBucket, SlaStats, StatusCount
-from ..workflow import TERMINAL_STATES
+from ..workflow import TERMINAL_STATES, sla_deadline
 
 OPEN_STATES = (
     ApplicantStatus.SUBMITTED,
@@ -110,7 +110,7 @@ def sla_stats(db: Session, settings: Settings, now: datetime | None = None) -> S
         )
         for row in rows
     ]
-    deadline = now - timedelta(hours=settings.review_sla_hours)
+    deadline = sla_deadline(settings.review_sla_hours, now)
     breaching = (
         db.execute(
             select(Applicant.id).where(

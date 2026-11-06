@@ -44,6 +44,7 @@ REQUIRED_DOCUMENTS = (DocumentKind.NID_FRONT, DocumentKind.NID_BACK, DocumentKin
 
 class AssignmentAction(str, enum.Enum):
     CLAIMED = "claimed"
+    AUTO_ASSIGNED = "auto_assigned"
     EXPIRED = "expired"
 
 

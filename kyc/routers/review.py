@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
 from ..auth import Principal, require_role
@@ -77,6 +77,22 @@ def update_reviewer(
     return reviewer_svc.update_reviewer(
         db, name, settings, **payload.model_dump(exclude_unset=True)
     )
+
+
+@router.post(
+    "/next",
+    response_model=ApplicantOut,
+    responses={status.HTTP_204_NO_CONTENT: {"description": "Nothing to assign right now."}},
+)
+def assign_next(
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("reviewer", "admin")),
+    settings: Settings = Depends(get_settings),
+):
+    applicant = review_svc.assign_next(db, principal, settings)
+    if applicant is None:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return applicant
 
 
 @router.post("/{applicant_id}/claim", response_model=ApplicantOut)

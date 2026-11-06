@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -16,8 +16,9 @@ os.environ["API_KEYS"] = (
 from fastapi.testclient import TestClient  # noqa: E402
 
 from kyc.config import get_settings  # noqa: E402
-from kyc.database import Base, engine  # noqa: E402
+from kyc.database import Base, SessionLocal, engine  # noqa: E402
 from kyc.main import app  # noqa: E402
+from kyc.models import Applicant, ApplicantStatus, RiskLevel  # noqa: E402
 from kyc.storage import LocalStorage, set_storage  # noqa: E402
 
 AGENT = {"X-API-Key": "agent-key"}
@@ -114,6 +115,36 @@ def use_two_reviewers(monkeypatch) -> dict[str, str]:
     )
     get_settings.cache_clear()
     return {"X-API-Key": "reviewer2-key"}
+
+
+def queued(
+    applicant_id: str,
+    *,
+    hours_waiting: float = 1,
+    risk: RiskLevel = RiskLevel.MEDIUM,
+    created_by: str = "Branch App",
+    session_factory=None,
+) -> str:
+    """Put an applicant straight in the queue so a test can control its age and risk."""
+    entered = datetime.now(timezone.utc) - timedelta(hours=hours_waiting)
+    with (session_factory or SessionLocal)() as db:
+        db.add(
+            Applicant(
+                id=applicant_id,
+                full_name="Queue Fixture",
+                nid_number="1990123456789",
+                date_of_birth=date(1990, 1, 1),
+                phone="01711223344",
+                status=ApplicantStatus.UNDER_REVIEW,
+                status_entered_at=entered,
+                submitted_at=entered,
+                risk_level=risk,
+                risk_score=50,
+                created_by=created_by,
+            )
+        )
+        db.commit()
+    return applicant_id
 
 
 @pytest.fixture

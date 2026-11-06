@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import update
 from sqlalchemy.dialects import postgresql
@@ -9,36 +9,7 @@ from kyc.config import get_settings
 from kyc.database import SessionLocal
 from kyc.models import Applicant, ApplicantStatus, RiskLevel, StateTransition
 from kyc.services import review
-from tests.conftest import ADMIN, AGENT, REVIEWER, submit_for_review, use_two_reviewers
-
-
-def queued(
-    applicant_id: str,
-    *,
-    hours_waiting: float = 1,
-    risk: RiskLevel = RiskLevel.MEDIUM,
-    created_by: str = "Branch App",
-) -> str:
-    """Put an applicant straight in the queue so a test can control its age and risk."""
-    entered = datetime.now(timezone.utc) - timedelta(hours=hours_waiting)
-    with SessionLocal() as db:
-        db.add(
-            Applicant(
-                id=applicant_id,
-                full_name="Queue Fixture",
-                nid_number="1990123456789",
-                date_of_birth=date(1990, 1, 1),
-                phone="01711223344",
-                status=ApplicantStatus.UNDER_REVIEW,
-                status_entered_at=entered,
-                submitted_at=entered,
-                risk_level=risk,
-                risk_score=50,
-                created_by=created_by,
-            )
-        )
-        db.commit()
-    return applicant_id
+from tests.conftest import ADMIN, AGENT, REVIEWER, queued, submit_for_review, use_two_reviewers
 
 
 def take(client, headers=REVIEWER) -> str | None:

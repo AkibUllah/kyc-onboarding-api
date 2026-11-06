@@ -5,8 +5,9 @@ from datetime import date
 
 import pytest
 
-# Configure before the app modules are imported: in-memory SQLite, local storage in tmp.
-os.environ["DATABASE_URL"] = "sqlite://"
+# Configure before the app modules are imported: in-memory SQLite unless TEST_DATABASE_URL points
+# at a throwaway PostgreSQL (its tables are dropped between tests), local storage in tmp.
+os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", "sqlite://")
 os.environ["AUTO_APPROVE_LOW_RISK"] = "true"
 os.environ["API_KEYS"] = (
     "agent-key:agent:Branch App,reviewer-key:reviewer:Nadia,admin-key:admin:Ops"
